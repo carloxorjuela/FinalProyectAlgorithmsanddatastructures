@@ -1,211 +1,139 @@
-# 🌳 TREESHARES INVESTMENT
+# TREESHARES INVESTMENT
 
-## Sistema de Análisis de Inversiones Usando Estructuras de Datos Jerárquicas y Grafos
+Sistema de Analisis de Inversiones Usando Estructuras de Datos Jerarquicas y Grafos
 
-**Universidad del Rosario - Algoritmos y Estructuras de Datos**
-
----
-
-## 👥 Integrantes
-
-| Nombre | Rol |
-|--------|-----|
-| Carlos Gutiérrez | Gerente de Proyecto |
-| Samuel Valderrama | Director de Pruebas |
-| David Pascagaza | Director de Diseño |
+Universidad del Rosario - Algoritmos y Estructuras de Datos
 
 ---
 
-## 📋 Descripción del Proyecto
+## Integrantes
 
-TreeShares Investment es un sistema de recomendación de inversiones que implementa **tres estructuras de datos avanzadas desde cero** (sin usar librerías de ML como sklearn):
-
-1. **Árbol de Decisión** - Para predicción de acciones ganadoras
-2. **Árbol Binario de Búsqueda (BST)** - Para búsqueda eficiente por precios
-3. **Grafo No Dirigido Ponderado** - Para análisis de correlaciones
+- Carlos Gutierrez - Gerente de Proyecto
+- Samuel Valderrama - Director de Pruebas
+- David Pascagaza - Director de Diseno
 
 ---
 
-## 🎯 Objetivos
+## Descripcion
 
-### Objetivo General
-Diseñar e implementar un algoritmo de Árbol de Decisión basado en estructuras de datos jerárquicas que recomiende activos financieros con alto potencial de superar el benchmark.
+TreeShares Investment es un sistema de recomendacion de inversiones que analiza datos historicos de acciones para predecir cuales tienen mayor probabilidad de superar el benchmark del mercado.
 
-### Objetivos Específicos
-- ✅ Desarrollar un Árbol de Decisión que prediga si una acción superará el S&P 500
-- ✅ Construir un Grafo no dirigido ponderado para modelar correlaciones
-- ✅ Implementar un BST para organizar acciones por precio
-- ✅ Integrar las tres estructuras en un flujo coherente
-- ✅ Procesar datos históricos de Yahoo Finance (+600,000 filas)
-- ✅ Evaluar el modelo con métricas cuantitativas (accuracy, precision, recall, F1)
-- ✅ Generar visualizaciones del Árbol de Decisión
-- ✅ Proveer un prototipo funcional con simulación de portafolios
+El proyecto implementa tres estructuras de datos avanzadas desde cero, sin utilizar librerias de machine learning como sklearn.
 
 ---
 
-## 🔧 Estructuras de Datos Implementadas
+## Estructuras de Datos Implementadas
 
-### 1. Árbol de Decisión (Desde Cero)
+### 1. Arbol de Decision
 
-```
-Algoritmo: ID3/CART con Entropía y Ganancia de Información
+Se implemento el algoritmo de construccion de arboles de decision usando entropia y ganancia de informacion.
 
-Entropía: H(S) = -Σ p(x) · log₂(p(x))
-Ganancia: IG(S,A) = H(S) - Σ (|Sᵥ|/|S|) · H(Sᵥ)
-```
+La entropia mide el desorden en los datos:
 
-**Características:**
-- Construcción recursiva del árbol
-- Poda por profundidad máxima
-- Cálculo de importancia de características
-- Predicción por recorrido de nodos
+    H(S) = -sum( p(x) * log2(p(x)) )
 
-### 2. Árbol Binario de Búsqueda (BST)
+La ganancia de informacion determina que caracteristica usar para dividir:
 
-```
-Complejidad:
-- Inserción: O(log n)
-- Búsqueda: O(log n)
-- Búsqueda por rango: O(log n + k)
-```
+    IG(S,A) = H(S) - sum( (|Sv|/|S|) * H(Sv) )
 
-**Funcionalidades:**
-- Organización de acciones por precio
-- Búsqueda eficiente por rangos de precio
-- Obtención de mínimo/máximo en O(log n)
+El arbol se construye recursivamente, seleccionando en cada nodo la caracteristica que maximiza la ganancia de informacion. Se implementaron funciones para:
+- Calcular entropia de un conjunto
+- Calcular ganancia de informacion para cada division
+- Encontrar el mejor punto de corte (umbral)
+- Construir el arbol recursivamente
+- Predecir recorriendo el arbol desde la raiz
+
+### 2. Arbol Binario de Busqueda (BST)
+
+Se implemento un BST para organizar las acciones por precio, permitiendo busquedas eficientes.
+
+Complejidades:
+- Insercion: O(log n)
+- Busqueda: O(log n)
+- Busqueda por rango: O(log n + k), donde k es el numero de resultados
+
+Funcionalidades implementadas:
+- Insercion recursiva manteniendo la propiedad del BST
+- Busqueda por rango de precios
+- Obtencion del minimo y maximo
 
 ### 3. Grafo de Correlaciones
 
-```
-Representación: Lista de Adyacencias
-Algoritmo de búsqueda: BFS (Breadth-First Search)
-Complejidad BFS: O(V + E)
-```
+Se implemento un grafo no dirigido ponderado usando listas de adyacencia.
 
-**Funcionalidades:**
-- Vértices: Acciones (tickers)
-- Aristas: Correlaciones entre rendimientos
-- Búsqueda de acciones similares
-- Identificación de acciones para diversificación
+- Vertices: cada accion (ticker) es un vertice
+- Aristas: conectan acciones con correlacion alta en sus rendimientos
+- Peso: valor de la correlacion entre los rendimientos historicos
 
----
+Se implemento el algoritmo BFS (Breadth-First Search) para explorar acciones relacionadas, con complejidad O(V + E).
 
-## 📊 Dataset
-
-- **Fuente:** Kaggle - Yahoo Finance Dataset
-- **Archivo:** `stock_details_5_years.csv`
-- **Filas:** 602,962
-- **Empresas:** 491 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA, etc.)
-- **Período:** 5 años de datos históricos
-- **Columnas:** Date, Open, High, Low, Close, Volume, Dividends, Stock Splits, Company
+Funcionalidades:
+- Encontrar acciones similares (alta correlacion)
+- Encontrar acciones para diversificar (baja correlacion)
+- Explorar relaciones de segundo grado con BFS
 
 ---
 
-## 🚀 Instalación y Uso
+## Logica del Sistema
 
-### Requisitos
-```bash
-pip install pandas numpy
-```
+1. Se cargan los datos historicos del CSV (602,962 filas, 491 empresas)
 
-### Ejecución
-```bash
-python main.py
-```
+2. Se preprocesa la informacion calculando para cada empresa:
+   - Precio actual
+   - Rendimiento total (5 anos)
+   - Volatilidad (desviacion estandar de cambios diarios)
+   - Indicadores financieros (RSI, ROE, P/E, margen EBITDA, deuda/EBITDA)
 
-### Menú Principal
-```
-============================================================
-  MENU PRINCIPAL - TREESHARES INVESTMENT
-============================================================
+3. Se define el target: una accion "supera" si su rendimiento es mayor a la mediana
 
---- DATOS ---
-1. Cargar datos desde CSV
+4. Se construye el BST insertando cada accion ordenada por precio
 
---- MODELO ---
-2. Entrenar Arbol de Decision
-3. Evaluar modelo (Accuracy, Precision, Recall, F1)
+5. Se construye el grafo calculando correlaciones entre rendimientos diarios
 
---- ESTRUCTURAS DE DATOS ---
-4. Buscar por precio (BST)
-5. Analizar correlaciones (Grafo + BFS)
+6. Se entrena el arbol de decision con 80% de los datos
 
---- INVERSIONES ---
-6. Ver recomendaciones TOP 15
-7. Simular portafolio personalizado
-8. Generar portafolio optimo diversificado
+7. Se evalua el modelo con metricas: accuracy, precision, recall, F1
 
---- VISUALIZACION ---
-9. Ver Arbol de Decision
-10. Estadisticas generales
+8. Se generan recomendaciones usando las predicciones del arbol
 
-0. Salir
-```
+9. Se optimizan portafolios usando el grafo para diversificar
 
 ---
 
-## 📈 Funcionalidades
+## Dataset
 
-| Función | Descripción |
-|---------|-------------|
-| **Cargar datos** | Importa 602,962 registros del CSV |
-| **Entrenar modelo** | Construye el árbol de decisión |
-| **Evaluar modelo** | Muestra Accuracy, Precision, Recall, F1 |
-| **Buscar por precio** | Búsqueda O(log n) en el BST |
-| **Correlaciones** | Análisis con BFS en el grafo |
-| **Recomendaciones** | TOP 15 acciones predichas como ganadoras |
-| **Simular portafolio** | Proyección de inversión con acciones elegidas |
-| **Portafolio óptimo** | Selección automática diversificada |
-| **Ver árbol** | Visualización de reglas de decisión |
-| **Estadísticas** | Métricas de las estructuras |
+- Fuente: Kaggle - Yahoo Finance Dataset
+- Archivo: stock_details_5_years.csv
+- Registros: 602,962 filas
+- Empresas: 491 (AAPL, MSFT, GOOGL, AMZN, NVDA, META, TSLA, etc.)
+- Periodo: 5 anos de datos historicos
+- Columnas: Date, Open, High, Low, Close, Volume, Dividends, Stock Splits, Company
 
 ---
 
-## 📐 Métricas de Evaluación
+## Ejecucion
 
-El sistema calcula:
-- **Accuracy**: Porcentaje total de predicciones correctas
-- **Precision**: De las predicciones "COMPRAR", cuántas fueron correctas
-- **Recall**: De las acciones ganadoras reales, cuántas detectó
-- **F1-Score**: Media armónica de Precision y Recall
+Requisitos:
+    pip install pandas numpy
 
----
-
-## 🏗️ Arquitectura del Sistema
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    TREESHARES INVESTMENT                 │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   Árbol de   │  │     BST      │  │    Grafo     │  │
-│  │   Decisión   │  │   Precios    │  │ Correlaciones│  │
-│  │              │  │              │  │              │  │
-│  │ • Entropía   │  │ • Inserción  │  │ • Adyacencias│  │
-│  │ • Ganancia   │  │ • Búsqueda   │  │ • BFS        │  │
-│  │ • Predicción │  │ • Rango      │  │ • Similares  │  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │              MÓDULO DE PORTAFOLIOS                  ││
-│  │  • Simulación  • Optimización  • Diversificación   ││
-│  └─────────────────────────────────────────────────────┘│
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │                 INTERFAZ DE MENÚ                    ││
-│  └─────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────┘
-```
+Ejecutar:
+    python main.py
 
 ---
 
-## 📝 Licencia
+## Funcionalidades del Menu
 
-Proyecto académico - Universidad del Rosario 2025
+1. Cargar datos - Importa el CSV y construye las estructuras
+2. Entrenar modelo - Construye el arbol de decision
+3. Evaluar modelo - Muestra accuracy, precision, recall, F1
+4. Buscar por precio - Busqueda en el BST por rango de precios
+5. Correlaciones - Analisis con el grafo y BFS
+6. Recomendaciones - Top 15 acciones predichas como ganadoras
+7. Simular portafolio - Proyeccion con acciones elegidas por el usuario
+8. Portafolio optimo - Seleccion automatica diversificada
+9. Ver arbol - Visualizacion de las reglas de decision
+10. Estadisticas - Metricas de las estructuras de datos
 
 ---
 
-## 📧 Contacto
-
-Para dudas o sugerencias, contactar al equipo del proyecto.
+Universidad del Rosario - 2025
