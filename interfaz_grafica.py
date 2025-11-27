@@ -13,6 +13,37 @@ from collections import deque
 import math
 import os
 
+# Intentar importar yfinance (opcional)
+try:
+    import yfinance as yf
+    YFINANCE_DISPONIBLE = True
+except ImportError:
+    YFINANCE_DISPONIBLE = False
+
+
+def calcular_rsi(precios, periodo=14):
+    """Calcula el RSI (Relative Strength Index) a partir de precios"""
+    if len(precios) < periodo + 1:
+        return 50  # Valor neutral si no hay suficientes datos
+    
+    precios = np.array(precios)
+    cambios = np.diff(precios)
+    
+    ganancias = np.where(cambios > 0, cambios, 0)
+    perdidas = np.where(cambios < 0, -cambios, 0)
+    
+    avg_ganancia = np.mean(ganancias[-periodo:])
+    avg_perdida = np.mean(perdidas[-periodo:])
+    
+    if avg_perdida == 0:
+        return 100
+    
+    rs = avg_ganancia / avg_perdida
+    rsi = 100 - (100 / (1 + rs))
+    
+    return rsi
+
+
 # =====================================================================
 # ESTRUCTURAS DE DATOS (Copiadas de main.py)
 # =====================================================================
@@ -257,17 +288,20 @@ class GrafoCorrelaciones:
                         cola.append((vecino, prof + 1))
         return resultado
     
-    def encontrar_similares(self, ticker, umbral=0.7):
+    def encontrar_similares(self, ticker, umbral=0.5):
+        """Encuentra acciones con alta correlacion (similar comportamiento)"""
         if ticker not in self.adyacencias:
             return []
         similares = [(v, c) for v, c in self.adyacencias[ticker] if c >= umbral]
-        return sorted(similares, key=lambda x: x[1], reverse=True)
+        return sorted(similares, key=lambda x: x[1], reverse=True)[:10]
     
-    def encontrar_diversificadas(self, ticker, umbral=0.3):
+    def encontrar_diversificadas(self, ticker, umbral=0.5):
+        """Encuentra acciones con baja correlacion (para diversificar)"""
         if ticker not in self.adyacencias:
             return []
-        diversas = [(v, c) for v, c in self.adyacencias[ticker] if abs(c) < umbral]
-        return sorted(diversas, key=lambda x: abs(x[1]))
+        # Buscar las de menor correlacion (incluso negativas)
+        diversas = [(v, c) for v, c in self.adyacencias[ticker] if c < umbral]
+        return sorted(diversas, key=lambda x: x[1])[:10]
 
 
 # =====================================================================
@@ -283,12 +317,33 @@ class TreeSharesInvestment:
         self.modelo_entrenado = False
         self.precios_hist = {}
         self.caracs = ['volatilidad', 'rsi', 'roe', 'pe_ratio', 'margen_ebitda', 'deuda_ebitda', 'volumen']
+        self.datos_yahoo_cargados = False
     
     def cargar_csv(self, ruta_csv='stock_details_5_years.csv'):
         df = pd.read_csv(ruta_csv)
         return df
     
+    def calcular_rsi(self, precios, periodo=14):
+        """Calcula el RSI (Relative Strength Index) manualmente"""
+        if len(precios) < periodo + 1:
+            return 50.0  # Valor neutral si no hay suficientes datos
+        
+        cambios = np.diff(precios)
+        ganancias = np.where(cambios > 0, cambios, 0)
+        perdidas = np.where(cambios < 0, -cambios, 0)
+        
+        avg_ganancia = np.mean(ganancias[-periodo:])
+        avg_perdida = np.mean(perdidas[-periodo:])
+        
+        if avg_perdida == 0:
+            return 100.0
+        
+        rs = avg_ganancia / avg_perdida
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+    
     def preprocesar(self, df, callback=None):
+        """Preprocesa datos del CSV (indicadores simulados inicialmente)"""
         empresas = df.groupby('Company')
         datos_proc = []
         self.precios_hist = {}
@@ -306,17 +361,109 @@ class TreeSharesInvestment:
             self.precios_hist[ticker] = precios
             rendimiento = (precios[-1] - precios[0]) / precios[0] if precios[0] != 0 else 0
             volatilidad = np.std(np.diff(precios) / precios[:-1]) if len(precios) > 1 else 0
+            
+            # RSI calculado de los datos del CSV
+            rsi = self.calcular_rsi(precios)
+            
+            # Indicadores financieros simulados (se pueden actualizar con Yahoo Finance)
             np.random.seed(hash(ticker) % 2**32)
             datos_proc.append({
                 'ticker': ticker, 'precio': precios[-1], 'rendimiento': rendimiento,
                 'volatilidad': volatilidad, 'volumen': np.mean(volumenes),
-                'rsi': np.random.uniform(20, 80), 'roe': np.random.uniform(-0.1, 0.4),
-                'pe_ratio': np.random.uniform(5, 50), 'margen_ebitda': np.random.uniform(0.05, 0.4),
-                'deuda_ebitda': np.random.uniform(0.5, 5)
+                'rsi': rsi,  # RSI calculado real
+                'roe': np.random.uniform(-0.1, 0.4),  # Simulado
+                'pe_ratio': np.random.uniform(5, 50),  # Simulado
+                'margen_ebitda': np.random.uniform(0.05, 0.4),  # Simulado
+                'deuda_ebitda': np.random.uniform(0.5, 5),  # Simulado
+                'datos_reales': False  # Marca si tiene datos de Yahoo
             })
         
         self.datos_acciones = pd.DataFrame(datos_proc)
         return self.datos_acciones
+    
+    def cargar_datos_yahoo(self, callback=None, max_tickers=None):
+        """Carga indicadores financieros reales de Yahoo Finance"""
+        if not YFINANCE_DISPONIBLE:
+            if callback:
+                callback("ERROR: yfinance no esta instalado. Ejecuta: pip install yfinance")
+            return False
+        
+        if self.datos_acciones is None:
+            if callback:
+                callback("ERROR: Primero debes cargar los datos del CSV")
+            return False
+        
+        tickers = self.datos_acciones['ticker'].tolist()
+        if max_tickers:
+            tickers = tickers[:max_tickers]
+        
+        total = len(tickers)
+        actualizados = 0
+        errores = 0
+        
+        if callback:
+            callback(f"\nCargando datos de Yahoo Finance para {total} tickers...")
+            callback("(Esto puede tomar varios minutos)\n")
+        
+        for i, ticker in enumerate(tickers):
+            if callback and i % 10 == 0:
+                callback(f"Yahoo Finance: {i}/{total} ({actualizados} actualizados, {errores} errores)")
+            
+            try:
+                stock = yf.Ticker(ticker)
+                info = stock.info
+                
+                # Obtener indicadores reales
+                roe = info.get('returnOnEquity', None)
+                pe_ratio = info.get('trailingPE', None) or info.get('forwardPE', None)
+                margen_ebitda = info.get('ebitdaMargins', None)
+                deuda_total = info.get('totalDebt', None)
+                ebitda = info.get('ebitda', None)
+                
+                # Calcular deuda/ebitda si hay datos
+                deuda_ebitda = None
+                if deuda_total and ebitda and ebitda > 0:
+                    deuda_ebitda = deuda_total / ebitda
+                
+                # Actualizar solo si tenemos al menos 2 indicadores
+                indicadores_validos = sum([
+                    roe is not None,
+                    pe_ratio is not None,
+                    margen_ebitda is not None,
+                    deuda_ebitda is not None
+                ])
+                
+                if indicadores_validos >= 2:
+                    idx = self.datos_acciones[self.datos_acciones['ticker'] == ticker].index[0]
+                    
+                    if roe is not None:
+                        self.datos_acciones.at[idx, 'roe'] = roe
+                    if pe_ratio is not None:
+                        self.datos_acciones.at[idx, 'pe_ratio'] = pe_ratio
+                    if margen_ebitda is not None:
+                        self.datos_acciones.at[idx, 'margen_ebitda'] = margen_ebitda
+                    if deuda_ebitda is not None:
+                        self.datos_acciones.at[idx, 'deuda_ebitda'] = deuda_ebitda
+                    
+                    self.datos_acciones.at[idx, 'datos_reales'] = True
+                    actualizados += 1
+                
+            except Exception as e:
+                errores += 1
+                continue
+        
+        self.datos_yahoo_cargados = True
+        
+        if callback:
+            callback(f"\n{'='*50}")
+            callback(f"CARGA DE YAHOO FINANCE COMPLETADA")
+            callback(f"{'='*50}")
+            callback(f"  Tickers procesados: {total}")
+            callback(f"  Actualizados con datos reales: {actualizados}")
+            callback(f"  Errores/Sin datos: {errores}")
+            callback(f"  Porcentaje con datos reales: {actualizados/total*100:.1f}%")
+        
+        return True
     
     def construir_bst(self, callback=None):
         for i, row in self.datos_acciones.iterrows():
@@ -324,7 +471,8 @@ class TreeSharesInvestment:
             if callback and i % 100 == 0:
                 callback(f"BST: {i} acciones insertadas...")
     
-    def construir_grafo(self, umbral=0.5, callback=None):
+    def construir_grafo(self, umbral=0.3, callback=None):
+        """Construye grafo de correlaciones entre acciones"""
         tickers = list(self.precios_hist.keys())
         for t in tickers:
             datos_t = self.datos_acciones[self.datos_acciones['ticker'] == t]
@@ -335,23 +483,42 @@ class TreeSharesInvestment:
         if min_len < 10:
             return
         
+        # Calcular rendimientos para todos los tickers
         matriz = np.array([self.precios_hist[t][-min_len:] for t in tickers])
         rends = np.diff(matriz, axis=1) / (matriz[:, :-1] + 1e-10)
         
-        n_comp = min(len(tickers), 100)
-        indices = np.random.choice(len(tickers), n_comp, replace=False)
+        n_tickers = len(tickers)
         
-        total_pairs = len(indices) * (len(indices) - 1) // 2
-        count = 0
+        if callback:
+            callback(f"Calculando correlaciones para {n_tickers} tickers...")
         
-        for i, idx_i in enumerate(indices):
-            for idx_j in indices[i+1:]:
-                count += 1
-                if callback and count % 500 == 0:
-                    callback(f"Grafo: {count}/{total_pairs} correlaciones...")
-                corr = np.corrcoef(rends[idx_i], rends[idx_j])[0, 1]
-                if not np.isnan(corr) and abs(corr) >= umbral:
-                    self.grafo.agregar_arista(tickers[idx_i], tickers[idx_j], corr)
+        # Para cada ticker, calcular correlaciones con otros
+        for i in range(n_tickers):
+            if callback and i % 50 == 0:
+                callback(f"Grafo: procesando ticker {i}/{n_tickers}...")
+            
+            # Comparar con otros tickers (limitado para eficiencia)
+            otros = list(range(n_tickers))
+            otros.remove(i)
+            
+            # Seleccionar 80 tickers para comparar
+            if len(otros) > 80:
+                np.random.seed(i + 1000)
+                otros = list(np.random.choice(otros, 80, replace=False))
+            
+            correlaciones = []
+            for j in otros:
+                corr = np.corrcoef(rends[i], rends[j])[0, 1]
+                if not np.isnan(corr):
+                    correlaciones.append((j, corr))
+            
+            # Ordenar por correlacion y guardar las mejores conexiones
+            correlaciones.sort(key=lambda x: abs(x[1]), reverse=True)
+            
+            # Agregar las top 15 correlaciones (altas y bajas)
+            for j, corr in correlaciones[:15]:
+                if i < j:  # Evitar duplicados
+                    self.grafo.agregar_arista(tickers[i], tickers[j], corr)
     
     def calcular_target(self):
         rend_bench = self.datos_acciones['rendimiento'].median()
@@ -518,6 +685,16 @@ class InterfazTreeShares:
                                 bg='#ffd700', fg='black', width=25, height=2,
                                 command=self.entrenar_modelo)
         btn_entrenar.pack(pady=10)
+        
+        # Boton para cargar datos reales de Yahoo Finance
+        btn_yahoo = tk.Button(btn_frame, text="CARGAR DATOS REALES (API)", font=('Arial', 12, 'bold'),
+                             bg='#ff6b6b', fg='white', width=25, height=2,
+                             command=self.cargar_datos_yahoo)
+        btn_yahoo.pack(pady=10)
+        
+        info_yahoo = tk.Label(btn_frame, text="(Opcional: Obtiene RSI, ROE, P/E real de Yahoo Finance - ~5 min)", 
+                             font=('Arial', 9), fg='#888', bg='#16213e')
+        info_yahoo.pack()
         
         # Area de texto para log
         self.txt_log = scrolledtext.ScrolledText(tab, width=100, height=20, 
@@ -722,6 +899,106 @@ METRICAS DEL MODELO:
             self.log(texto_metricas)
             
             messagebox.showinfo("Exito", f"Modelo entrenado!\nAccuracy: {metricas['accuracy']*100:.1f}%")
+            
+        except Exception as e:
+            self.log(f"\nERROR: {str(e)}")
+            messagebox.showerror("Error", str(e))
+    
+    def cargar_datos_yahoo(self):
+        """Carga datos financieros reales de Yahoo Finance API"""
+        if not self.datos_cargados:
+            messagebox.showwarning("Aviso", "Primero debes cargar los datos del CSV")
+            return
+        
+        respuesta = messagebox.askyesno("Cargar datos reales", 
+            "Este proceso obtendra RSI, ROE, P/E y otros indicadores reales de Yahoo Finance.\n\n" +
+            "Esto puede tomar varios minutos (~5-8 min para 491 empresas).\n\n" +
+            "¿Deseas continuar?")
+        
+        if not respuesta:
+            return
+        
+        self.log("\n" + "="*60)
+        self.log("  CARGANDO DATOS REALES DE YAHOO FINANCE...")
+        self.log("="*60)
+        
+        try:
+            tickers = list(self.sistema.datos_acciones['ticker'].unique())
+            total = len(tickers)
+            exitosos = 0
+            fallidos = 0
+            
+            self.log(f"\nProcesando {total} empresas...\n")
+            
+            for i, ticker in enumerate(tickers):
+                if (i + 1) % 20 == 0 or i == 0:
+                    self.log(f"  Progreso: {i+1}/{total} ({(i+1)/total*100:.1f}%)")
+                
+                try:
+                    # Obtener info de Yahoo Finance
+                    stock = yf.Ticker(ticker)
+                    info = stock.info
+                    
+                    # Obtener indicadores
+                    roe = info.get('returnOnEquity', None)
+                    pe_ratio = info.get('trailingPE', None)
+                    margen_ebitda = info.get('ebitdaMargins', None)
+                    
+                    # Calcular deuda/ebitda
+                    total_debt = info.get('totalDebt', None)
+                    ebitda = info.get('ebitda', None)
+                    deuda_ebitda = total_debt / ebitda if total_debt and ebitda and ebitda > 0 else None
+                    
+                    # Calcular RSI desde precios historicos
+                    rsi = None
+                    if ticker in self.sistema.precios_hist:
+                        precios = self.sistema.precios_hist[ticker]
+                        if len(precios) >= 15:
+                            rsi = calcular_rsi(precios)
+                    
+                    # Actualizar DataFrame
+                    mask = self.sistema.datos_acciones['ticker'] == ticker
+                    
+                    if roe is not None:
+                        self.sistema.datos_acciones.loc[mask, 'ROE'] = roe
+                    if pe_ratio is not None and pe_ratio > 0:
+                        self.sistema.datos_acciones.loc[mask, 'PE_ratio'] = min(pe_ratio, 100)  # Cap at 100
+                    if margen_ebitda is not None:
+                        self.sistema.datos_acciones.loc[mask, 'margen_ebitda'] = margen_ebitda
+                    if deuda_ebitda is not None:
+                        self.sistema.datos_acciones.loc[mask, 'deuda_ebitda'] = min(deuda_ebitda, 10)  # Cap at 10
+                    if rsi is not None:
+                        self.sistema.datos_acciones.loc[mask, 'RSI'] = rsi
+                    
+                    exitosos += 1
+                    
+                except Exception as e:
+                    fallidos += 1
+                    # Silently continue
+            
+            self.log(f"\n  Completado: {exitosos} exitosos, {fallidos} fallidos")
+            
+            # Recalcular target y mostrar estadisticas
+            self.log("\n  Estadisticas actualizadas:")
+            for col in ['RSI', 'ROE', 'PE_ratio', 'margen_ebitda', 'deuda_ebitda']:
+                if col in self.sistema.datos_acciones.columns:
+                    valores_validos = self.sistema.datos_acciones[col].dropna()
+                    if len(valores_validos) > 0:
+                        self.log(f"    {col}: media={valores_validos.mean():.3f}, " +
+                                f"min={valores_validos.min():.3f}, max={valores_validos.max():.3f}")
+            
+            self.log("\n" + "="*60)
+            self.log("  DATOS REALES CARGADOS - REENTRENA EL MODELO")
+            self.log("="*60)
+            
+            # Resetear modelo para que se reentrene
+            self.modelo_entrenado = False
+            self.lbl_estado.config(text="Estado: Datos reales cargados - Reentrena el modelo")
+            
+            messagebox.showinfo("Exito", 
+                f"Datos reales cargados!\n\n" +
+                f"Exitosos: {exitosos}\nFallidos: {fallidos}\n\n" +
+                "Ahora entrena el modelo para usar los indicadores reales.")
             
         except Exception as e:
             self.log(f"\nERROR: {str(e)}")
